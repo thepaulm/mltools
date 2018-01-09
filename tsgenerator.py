@@ -7,21 +7,52 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 
-class TSGenerator(keras.utils.Sequence):
-    def __init__(self, ts, observations, predictions, batch_size, scale=True):
+class TSGenerator:
+    def __init__(self, ts, observations, predictions,
+                 batch_size=32, scale=True, val_pct=None):
         '''ts is the timeseries data, obervations/predictions is count of each, batch_size
            is batch_size, scale is boolean saying whether to auto-scale features. If
            you pass scale=False, you can still call scale_fit and scale, it just means
            it won't happen automatically from __getitem__'''
-        self.batch_size = batch_size
         if isinstance(ts, pd.Series):
             ts = ts.as_matrix()
+        self.ts = ts
+        self.batch_size = batch_size
+        self.observations = observations
+        self.predictions = predictions
+        self.scaler = None
+        self.auto_scale = scale
+        self.val_pct = val_pct
+        if self.auto_scale is True:
+            self.scaler = MinMaxScaler()
+        if len(self.ts) < (self.predictions + self.observations):
+            raise Exception("Not enough data for samples")
+        if val_pct is not None:
+            split = int((len(self.ts) - (self.predictions + self.observations)) *
+                        (val_pct / 100.0))
+            self.tts = ts[:split + self.predictions]
+            self.vts = ts[split:]
+        else:
+            self.tts = ts
+
+    def train_gen(self):
+        return BatchGenerator(self.tts, self.observations, self.predictions,
+                              self.batch_size, self.auto_scale)
+
+    def val_gen(self):
+        return BatchGenerator(self.vts, self.observations, self.predictions,
+                              self.batch_size, self.auto_scale)
+
+
+class BatchGenerator(keras.utils.Sequence):
+    def __init__(self, ts, observations, predictions, batch_size, auto_scale):
+        self.batch_size = batch_size
         self.ts = ts
         self.observations = observations
         self.predictions = predictions
         self.idx = 0
         self.scaler = None
-        self.auto_scale = scale
+        self.auto_scale = auto_scale
         if self.auto_scale is True:
             self.scaler = MinMaxScaler()
         if len(self.ts) < (self.predictions + self.observations):
