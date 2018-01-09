@@ -44,8 +44,8 @@ class TSGenerator(keras.utils.Sequence):
             y = d[self.observations:]
 
             if self.auto_scale is not False:
-                x = x.reshape(x.shape + (1,))
-                y = y.reshape(y.shape + (1,))
+                x = x.reshape(x.shape + (1,)).astype('float64')
+                y = y.reshape(y.shape + (1,)).astype('float64')
                 self.scaler.fit(x)
                 x = np.array(self.scaler.transform(x)).squeeze()
                 y = np.array(self.scaler.transform(y)).squeeze()
@@ -77,7 +77,7 @@ class TSGenerator(keras.utils.Sequence):
         data, orig_shape = self._scale_shape(data)
         if self.scaler is None:
             self.scaler = MinMaxScaler()
-        data = self.scaler.fit_transform(data)
+        data = self.scaler.fit_transform(data.astype('float64'))
         return self._scale_deshape(data, orig_shape)
 
     def scale(self, data):
@@ -86,7 +86,7 @@ class TSGenerator(keras.utils.Sequence):
             return data
 
         data, orig_shape = self._scale_shape(data)
-        data = self.scaler.transform(data)
+        data = self.scaler.transform(data.astype('float64'))
         data = self._scale_deshape(data, orig_shape)
         return data
 
