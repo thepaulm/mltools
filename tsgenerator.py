@@ -29,7 +29,7 @@ class TSGenerator:
             raise Exception("Not enough data for samples")
         if val_pct is not None:
             split = int((len(self.ts) - (self.predictions + self.observations)) *
-                        (val_pct / 100.0))
+                        ((100 - val_pct) / 100.0))
             self.tts = ts[:split + self.predictions]
             self.vts = ts[split:]
         else:
@@ -50,13 +50,12 @@ class BatchGenerator(keras.utils.Sequence):
         self.ts = ts
         self.observations = observations
         self.predictions = predictions
-        self.idx = 0
         self.scaler = None
         self.auto_scale = auto_scale
         if self.auto_scale is True:
             self.scaler = MinMaxScaler()
         if len(self.ts) < (self.predictions + self.observations):
-            raise Exception("Not enough data for samples")
+            raise Exception("(BatchGen): Not enough data for samples")
 
     def __len__(self):
         '''return len of batched samples'''
@@ -66,8 +65,9 @@ class BatchGenerator(keras.utils.Sequence):
         '''indexed iterator from sample data'''
         outX = []
         outY = []
-        for i in range(self.idx,
-                       min(self.idx + self.batch_size,
+        start = idx * self.batch_size
+        for i in range(start,
+                       min(start + self.batch_size,
                            len(self.ts) - (self.observations + self.predictions))):
             d = self.ts[i:i + self.observations + self.predictions]
 
