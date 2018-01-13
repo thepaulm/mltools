@@ -9,7 +9,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 class TSGenerator:
     def __init__(self, ts, observations, predictions,
-                 batch_size=32, scale=True, val_pct=None):
+                 batch_size=32, scale=True, val_pct=None, observations_as_features=False):
         '''ts is the timeseries data, obervations/predictions is count of each, batch_size
            is batch_size, scale is boolean saying whether to auto-scale features. If
            you pass scale=False, you can still call scale_fit and scale, it just means
@@ -23,6 +23,7 @@ class TSGenerator:
         self.scaler = None
         self.auto_scale = scale
         self.val_pct = val_pct
+        self.observations_as_features = observations_as_features
         if self.auto_scale is True:
             self.scaler = MinMaxScaler()
         if len(self.ts) < (self.predictions + self.observations):
@@ -37,21 +38,23 @@ class TSGenerator:
 
     def train_gen(self):
         return BatchGenerator(self.tts, self.observations, self.predictions,
-                              self.batch_size, self.auto_scale)
+                              self.batch_size, self.auto_scale, self.observations_as_features)
 
     def val_gen(self):
         return BatchGenerator(self.vts, self.observations, self.predictions,
-                              self.batch_size, self.auto_scale)
+                              self.batch_size, self.auto_scale, self.observations_as_features)
 
 
 class BatchGenerator(keras.utils.Sequence):
-    def __init__(self, ts, observations, predictions, batch_size, auto_scale):
+    def __init__(self, ts, observations, predictions, batch_size, auto_scale,
+                 observations_as_features):
         self.batch_size = batch_size
         self.ts = ts
         self.observations = observations
         self.predictions = predictions
         self.scaler = None
         self.auto_scale = auto_scale
+        self.observations_as_features = observations_as_features
         if self.auto_scale is True:
             self.scaler = MinMaxScaler()
         if len(self.ts) < (self.predictions + self.observations):
@@ -87,7 +90,10 @@ class BatchGenerator(keras.utils.Sequence):
         x = np.array(outX)
         y = np.array(outY)
 
-        return x.reshape(x.shape + (1, )), y
+        if self.observations_as_features:
+            return x.reshape(x.shape[:-1] + (1, ) + (x.shape[-1], )), y
+        else:
+            return x.reshape(x.shape + (1, )), y
 
     def _scale_shape(self, data):
         orig_shape = None
