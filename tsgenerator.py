@@ -129,6 +129,10 @@ class BatchGenerator(keras.utils.Sequence):
 
     def descale(self, data):
         '''descale the data from scaler. Will be noop if no scaler'''
-        if self.scaler is not None:
-            return self.scaler.inverse_transform(data)
+        if self.scaler is None:
+            return data
+
+        data, orig_shape = self._scale_shape(data)
+        data = self.scaler.inverse_transform(data)
+        data = self._scale_deshape(data, orig_shape)
         return data
