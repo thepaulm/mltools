@@ -42,7 +42,10 @@ class Trainer(object):
         return [self.history[k][offset:] for k in ['loss', 'val_loss']]
 
     def plot_predict(self, g, index=-1, descale=False):
-        dg = g.val_gen()
+        if g.has_val():
+            dg = g.val_gen()
+        else:
+            dg = g.train_gen()
         x, y = dg[len(dg)-1]
         p = self.model.predict(x[-1].reshape((1, ) + self.model.layers[0].input_shape[1:]))
         x = x[index]

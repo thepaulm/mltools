@@ -44,6 +44,9 @@ class TSGenerator:
         return BatchGenerator(self.vts, self.observations, self.predictions,
                               self.batch_size, self.auto_scale, self.observations_as_features)
 
+    def has_val(self):
+        return self.val_pct is not None
+
 
 class BatchGenerator(keras.utils.Sequence):
     def __init__(self, ts, observations, predictions, batch_size, auto_scale,
