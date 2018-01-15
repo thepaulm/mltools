@@ -22,10 +22,13 @@ class Trainer(object):
         # Train it
         try:
             tg = g.train_gen()
-            vg = g.val_gen()
             start = timer()
-            history = self.model.fit_generator(tg, steps_per_epoch=len(tg), epochs=epochs, verbose=verbose,
-                                               validation_data=vg, validation_steps=len(vg))
+            if g.has_val():
+                vg = g.val_gen()
+                history = self.model.fit_generator(tg, steps_per_epoch=len(tg), epochs=epochs, verbose=verbose,
+                                                   validation_data=vg, validation_steps=len(vg))
+            else:
+                history = self.model.fit_generator(tg, steps_per_epoch=len(tg), epochs=epochs, verbose=verbose)
             end = timer()
             self.train_time += end - start
             for k in history.history.keys():
