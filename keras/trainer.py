@@ -6,17 +6,25 @@ import pplot.pplot as ppt
 
 
 class Trainer(object):
-    def __init__(self, mmf):
+    def __init__(self, mmf, optimizer='adam', loss='mean_squared_error'):
         self.mmf = mmf
         self.exception = None
         self.model = None
         self.history = {}
         self.train_time = 0
+        self.optimizer = optimizer
+        self.loss = loss
+        self.default_lr = 1e-3
 
-    def train(self, g, lr=1e-3, epochs=32, verbose=False, optimizer='adam', loss='mean_squared_error'):
+    def train(self, g, lr=None, epochs=32, verbose=False):
+
+        # Initializers
         if self.model is None:
             self.model = self.mmf(g)
-            self.model.compile(loss=loss, optimizer=optimizer)
+            self.model.compile(loss=self.loss, optimizer=self.optimizer)
+
+        if lr is None:
+            lr = self.default_lr
         self.model.optimizer.lr = lr
 
         # Train it
@@ -60,5 +68,5 @@ class Trainer(object):
             p = dg.descale(p)
         ppt.pts(x, y, p)
 
-    def plot_losses(self):
-        ppt.ptt(*self.losses())
+    def plot_losses(self, offset=0):
+        ppt.ptt(*self.losses(offset=offset))

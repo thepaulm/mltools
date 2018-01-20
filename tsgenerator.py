@@ -7,7 +7,7 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 
-class TSGenerator:
+class TSGenerator(object):
     def __init__(self, ts, observations, predictions,
                  batch_size=32, scale=True, val_pct=None, observations_as_features=False):
         '''ts is the timeseries data, obervations/predictions is count of each, batch_size
@@ -37,18 +37,18 @@ class TSGenerator:
             self.tts = ts
 
     def train_gen(self):
-        return BatchGenerator(self.tts, self.observations, self.predictions,
-                              self.batch_size, self.auto_scale, self.observations_as_features)
+        return TSBatchGenerator(self.tts, self.observations, self.predictions,
+                                self.batch_size, self.auto_scale, self.observations_as_features)
 
     def val_gen(self):
-        return BatchGenerator(self.vts, self.observations, self.predictions,
-                              self.batch_size, self.auto_scale, self.observations_as_features)
+        return TSBatchGenerator(self.vts, self.observations, self.predictions,
+                                self.batch_size, self.auto_scale, self.observations_as_features)
 
     def has_val(self):
         return self.val_pct is not None
 
 
-class BatchGenerator(keras.utils.Sequence):
+class TSBatchGenerator(keras.utils.Sequence):
     def __init__(self, ts, observations, predictions, batch_size, auto_scale,
                  observations_as_features):
         self.batch_size = batch_size
