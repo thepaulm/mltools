@@ -16,7 +16,7 @@ class Trainer(object):
         self.optimizer = optimizer
         self.loss = loss
         self.default_lr = 1e-3
-        self.name = None
+        self.name = name
         self.closed = True
 
     def train(self, g, lr=None, epochs=32, verbose=False):
