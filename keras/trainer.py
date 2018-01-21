@@ -3,10 +3,11 @@
 import traceback as tb
 from timeit import default_timer as timer
 import pplot.pplot as ppt
+from keras import backend as K
 
 
 class Trainer(object):
-    def __init__(self, mmf, optimizer='adam', loss='mean_squared_error'):
+    def __init__(self, mmf, optimizer='adam', loss='mean_squared_error', name=None):
         self.mmf = mmf
         self.exception = None
         self.model = None
@@ -15,8 +16,12 @@ class Trainer(object):
         self.optimizer = optimizer
         self.loss = loss
         self.default_lr = 1e-3
+        self.name = None
+        self.closed = True
 
     def train(self, g, lr=None, epochs=32, verbose=False):
+
+        self.closed = False
 
         # Initializers
         if self.model is None:
@@ -70,3 +75,7 @@ class Trainer(object):
 
     def plot_losses(self, offset=0):
         ppt.ptt(*self.losses(offset=offset))
+
+    def close(self):
+        K.clear_session()
+        self.closed = True
