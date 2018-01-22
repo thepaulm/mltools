@@ -29,10 +29,21 @@ class TSGenerator(object):
         if len(self.ts) < (self.predictions + self.observations):
             raise Exception("Not enough data for samples")
         if val_pct is not None:
-            split = int((len(self.ts) - (self.predictions + self.observations)) *
-                        ((100 - val_pct) / 100.0))
+            # Take the split point based solely on data amount
+            split = int(len(self.ts) * ((100 - val_pct) / 100.0))
+            self.split = split  # This isn't used anywhere and is just stored to see what happened
+
+            # Train data treats it's data size as observations - model has seen every observation
+            # up to split.
             self.tts = ts[:split + self.predictions]
-            self.vts = ts[split:]
+
+            # Validation data treats it's data size as predictions - move one past the last observation
+            # the model has seen.
+            self.vts = ts[split - self.observations + 1:]
+
+            #     ----------------------------------s-----------
+            # tts:                           ooooooo pppp
+            # vts:                            oooooo opppp
         else:
             self.tts = ts
 
