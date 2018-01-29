@@ -16,6 +16,8 @@ class TSGenerator(object):
            it won't happen automatically from __getitem__'''
         if isinstance(ts, pd.Series):
             ts = ts.as_matrix()
+        if isinstance(ts, list):
+            ts = np.array(ts)
         self.ts = ts
         self.batch_size = batch_size
         self.observations = observations
