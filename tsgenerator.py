@@ -82,6 +82,9 @@ class TSBatchGenerator(keras.utils.Sequence):
 
     def __getitem__(self, idx):
         '''indexed iterator from sample data'''
+
+        if idx < 0:
+            idx = self.__len__() + idx
         outX = []
         outY = []
         start = idx * self.batch_size
@@ -107,7 +110,8 @@ class TSBatchGenerator(keras.utils.Sequence):
         y = np.array(outY)
 
         if self.observations_as_features:
-            return x.reshape(x.shape[:-1] + (1, ) + (x.shape[-1], )), y
+            return x.reshape(x.shape[:-1] + (1, ) + (x.shape[-1], )), \
+                   y.reshape(y.shape[:-1] + (1, ) + (y.shape[-1], ))
         else:
             return x.reshape(x.shape + (1, )), y
 
