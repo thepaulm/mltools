@@ -25,7 +25,15 @@ class TSGenerator(object):
         self.scaler = None
         self.auto_scale = scale
         self.val_pct = val_pct
+
         self.observations_as_features = observations_as_features
+        if self.observations_as_features:
+            self.timesteps = 1
+            self.features = observations
+        else:
+            self.timesteps = observations
+            self.features = 1
+
         if self.auto_scale is True:
             self.scaler = MinMaxScaler()
         if len(self.ts) < (self.predictions + self.observations):
@@ -109,9 +117,11 @@ class TSBatchGenerator(keras.utils.Sequence):
         x = np.array(outX)
         y = np.array(outY)
 
+        # These shapes only work if return_sequences is False for your last LSTM
+        # layer. Otherwise you have to add the sequence dimesion (probably a feature
+        # dimention).
         if self.observations_as_features:
-            return x.reshape(x.shape[:-1] + (1, ) + (x.shape[-1], )), \
-                   y.reshape(y.shape[:-1] + (1, ) + (y.shape[-1], ))
+            return x.reshape(x.shape[:-1] + (1, ) + (x.shape[-1], )), y
         else:
             return x.reshape(x.shape + (1, )), y
 
