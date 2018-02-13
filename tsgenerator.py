@@ -9,7 +9,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 class TSGenerator(object):
     def __init__(self, ts, observations, predictions,
-                 batch_size=32, scale=True, val_pct=None, observations_as_features=True):
+                 batch_size=32, scale=True, val_pct=None, observations_as_features=False):
         '''ts is the timeseries data, obervations/predictions is count of each, batch_size
            is batch_size, scale is boolean saying whether to auto-scale features. If
            you pass scale=False, you can still call scale_fit and scale, it just means
