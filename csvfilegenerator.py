@@ -179,8 +179,6 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
 #
 # Unit tests below here ...
 #
-debug = True
-
 
 def test_dir():
     import tempfile
@@ -190,12 +188,7 @@ def test_dir():
 
 def make_test_files(files, lines):
     td = test_dir()
-    if debug:
-        if not os.path.isdir(td):
-            os.mkdir(td)
-        print(td)
-    else:
-        os.mkdir(td)
+    os.mkdir(td)
 
     tot_lines = 0
     for f in range(files):
@@ -210,8 +203,7 @@ def make_test_files(files, lines):
 
 def clean_test_files(td):
     import shutil
-    if not debug:
-        shutil.rmtree(td)
+    shutil.rmtree(td)
 
 
 def test_gen(files, lines, batch_size, val_pct, td):
