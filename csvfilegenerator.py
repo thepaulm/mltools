@@ -23,7 +23,7 @@ class FileLoc(object):
 
 
 class CSVFileGenerator(object):
-    def __init__(self, directory, ycolumns, val_pct=None, batch_size=32):
+    def __init__(self, directory, ycolumns, batch_size=32, val_pct=None, shuffle=True):
         self.directory = directory
         if isinstance(ycolumns, str):
             ycolumns = [ycolumns]
@@ -31,6 +31,7 @@ class CSVFileGenerator(object):
         if val_pct == 0:
             val_pct = None
         self.val_pct = val_pct
+        self.shuffle = shuffle
         self.batch_size = batch_size
         self.files = []
         self.total_lines = 0
@@ -47,7 +48,6 @@ class CSVFileGenerator(object):
         # figure out where to do the val split
         if self.val_pct:
             split = int(self.total_lines * ((100.0 - val_pct) / 100.0))
-            print("Split should be: %d" % split)
             self.train_line_count = split
             self.val_line_count = self.total_lines - split
             lines = 0
@@ -85,35 +85,35 @@ class CSVFileGenerator(object):
 
     def train_gen(self):
         return CSVFileBatchGenerator(self.directory, self.ycolumns, self.batch_size,
-                                     self.train_line_count, self.files,
+                                     self.train_line_count, self.files, self.shuffle,
                                      start_loc=self.start_loc, end_loc=self.split_loc)
 
     def val_gen(self):
         if not self.has_val():
             return None
         return CSVFileBatchGenerator(self.directory, self.ycolumns, self.batch_size,
-                                     self.val_line_count, self.files,
+                                     self.val_line_count, self.files, self.shuffle,
                                      start_loc=self.split_loc, end_loc=self.end_loc)
 
 
 class CSVFileBatchGenerator(keras.utils.Sequence):
-    def __init__(self, directory, ycolumns, batch_size, line_count, files, start_loc, end_loc):
+    def __init__(self, directory, ycolumns, batch_size, line_count, files, shuffle,
+                 start_loc, end_loc):
         self.directory = directory
         self.ycolumns = ycolumns
         self.batch_size = batch_size
         self.line_count = line_count
         self.files = files
+        self.shuffle = shuffle
         self.start_loc = start_loc
         self.end_loc = end_loc
         self.current_file_index = self.start_loc.finfo.index
         self.total_offset_row = start_loc.finfo.total_start_row + start_loc.offset
 
-        self.xdfydf(self.start_loc.finfo)
+        self.read_curdf(self.start_loc.finfo)
 
-    def xdfydf(self, finfo):
-        df = pd.read_csv(finfo.filename)
-        self.xdf = df[[d for d in df.columns if d not in self.ycolumns]]
-        self.ydf = df[self.ycolumns]
+    def read_curdf(self, finfo):
+        self.curdf = pd.read_csv(finfo.filename)
 
     def __len__(self):
         return math.ceil(self.line_count / self.batch_size)
@@ -121,7 +121,7 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
     def _set_current_file(self, i):
             self.current_file_index = i
             current = self.files[self.current_file_index]
-            self.xdfydf(current)
+            self.read_curdf(current)
             return current
 
     def __getitem__(self, idx):
@@ -139,14 +139,13 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
             while start > current.total_start_row + current.endrow:
                 self.current_file_index += 1
                 current = self.files[self.current_file_index]
-            self.xdfydf(current)
+            self.read_curdf(current)
 
-        print("%d from file %s" % (idx, current.filename))
         start = start - current.total_start_row
         copied = 0
 
         def fix_end(count, copied, start):
-            end = len(self.xdf)
+            end = len(self.curdf)
             if self.end_loc.finfo.index == self.current_file_index:
                 end = self.end_loc.offset
             end = min(count - copied + start, end)
@@ -154,25 +153,24 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
 
         end = fix_end(count, copied, start)
 
-        x = self.xdf[start:end]
-        y = self.ydf[start:end]
+        df = self.curdf[start:end]
         copied += end - start
 
         while copied < count:
             if self.current_file_index + 1 > self.end_loc.finfo.index:
                 break
             current = self._set_current_file(self.current_file_index + 1)
-            print("%d from file %s" % (idx, current.filename))
 
             end = fix_end(count, copied, 0)
 
-            x = x.append(self.xdf[0:end])
-            y = y.append(self.ydf[0:end])
+            df = df.append(self.curdf[0:end])
             copied += end
 
-            if end < len(self.xdf):
-                break
+        if self.shuffle:
+            df = df.sample(frac=1).reset_index(drop=True)
 
+        x = df[[d for d in df.columns if d not in self.ycolumns]]
+        y = df[self.ycolumns]
         return x, y
 
 
@@ -188,6 +186,8 @@ def test_dir():
 
 def make_test_files(files, lines):
     td = test_dir()
+    if os.path.isdir(td):
+        clean_test_files(td)
     os.mkdir(td)
 
     tot_lines = 0
@@ -208,7 +208,8 @@ def clean_test_files(td):
 
 def test_gen(files, lines, batch_size, val_pct, td):
 
-    csvgen = CSVFileGenerator(directory=td, ycolumns='y', val_pct=val_pct, batch_size=batch_size)
+    csvgen = CSVFileGenerator(directory=td, ycolumns='y', batch_size=batch_size, val_pct=val_pct,
+                              shuffle=False)
 
     tg = csvgen.train_gen()
     vg = csvgen.val_gen()
@@ -227,11 +228,11 @@ def test_gen(files, lines, batch_size, val_pct, td):
         assert(len(x) == len(y))
         for j in range(len(x)):
             assert(x.iloc[j].x == checked % lines)
-            print("i: %d, j: %d, checked: %d, ilocy: %d" % (i, j, checked, y.iloc[j].y))
             assert(y.iloc[j].y == checked)
             checked += 1
 
     assert(checked == split)
+    train_count = checked
 
     if val_pct is not None:
         for i in range(len(vg)):
@@ -242,9 +243,10 @@ def test_gen(files, lines, batch_size, val_pct, td):
             assert(len(x) == len(y))
             for j in range(len(x)):
                 assert(x.iloc[j].x == checked % lines)
-                print("i: %d, j: %d, checked: %d, ilocy: %d" % (i, j, checked, y.iloc[j].y))
                 assert(y.iloc[j].y == checked)
                 checked += 1
+        val_count = checked - train_count
+        assert(val_count + train_count == files * lines)
 
 
 def test():
