@@ -7,6 +7,14 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 
+def shape_oaf(n):
+    return n.reshape(n.shape[:-1] + (1, ) + (n.shape[-1]))
+
+
+def shape_oao(n):
+    return n.reshape(n.shape + (1, ))
+
+
 class TSGenerator(object):
     def __init__(self, ts, observations, predictions,
                  batch_size=32, scale=True, val_pct=None, observations_as_features=False):
@@ -121,9 +129,9 @@ class TSBatchGenerator(keras.utils.Sequence):
         # layer. Otherwise you have to add the sequence dimesion (probably a feature
         # dimention).
         if self.observations_as_features:
-            return x.reshape(x.shape[:-1] + (1, ) + (x.shape[-1], )), y
+            return shape_oaf(x), shape_oaf(y)
         else:
-            return x.reshape(x.shape + (1, )), y
+            return shape_oao(x), shape_oao(y)
 
     def _scale_shape(self, data):
         orig_shape = None
