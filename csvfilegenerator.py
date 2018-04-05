@@ -25,11 +25,34 @@ class FileLoc(object):
 
 
 class CSVFileGenerator(object):
-    def __init__(self, directory, ycolumns, batch_size=32, val_pct=None, shuffle=True):
+    def __init__(self, directory, ycolumns, xcolumns=None, batch_size=32,
+                 val_pct=None, shuffle=True, handler='pandas'):
+        '''Directory is where to look for the files.
+           ycolumns is the label columns.
+           xcolumns is the feature columns (default None for "all the non-labels").
+           batch_size is batch size per epoch.
+           val_pct is percentage (0-100) for validation data - can be 0.
+           shuffle default True for shuffle each batch.
+           handler="pandas" for pd dataframe handling. This is mostly useful for
+             variable data types and column names. This may also be "numpy" which
+             will use less memory (and is faster) but won't parse column headers.
+             In the case of handler="numpy", ycolumns and xcolumns must be index
+             ranges instead of label strings.
+        '''
+
         self.directory = directory
-        if isinstance(ycolumns, str):
-            ycolumns = [ycolumns]
+        if handler == "pandas":
+            if isinstance(ycolumns, str):
+                ycolumns = [ycolumns]
+            if isinstance(xcolumns, str):
+                xcolumns = [xcolumns]
+        if handler == "numpy":
+            if isinstance(ycolumns, int):
+                ycolumns = slice(ycolumns, ycolumns+1)
+            if isinstance(xcolumns, int):
+                xcolumns = slice(xcolumns, xcolumns+1)
         self.ycolumns = ycolumns
+        self.xcolumns = xcolumns
         if val_pct == 0:
             val_pct = None
         self.val_pct = val_pct
@@ -76,8 +99,9 @@ class CSVFileGenerator(object):
         for i, f in enumerate(files):
             fullpath = self.directory + '/' + f
             lines = self.get_file_lines(fullpath)
-            if lines > 0:
-                lines -= 1  # Remove the header
+            if self.handler == "pandas":
+                if lines > 0:
+                    lines -= 1  # Remove the header
             if lines > 0:
                 self.files.append(FileInfo(fullpath, i, 0, lines-1, self.total_lines))
                 self.total_lines += lines
@@ -86,21 +110,23 @@ class CSVFileGenerator(object):
         return self.val_pct is not None
 
     def train_gen(self):
-        return CSVFileBatchGenerator(self.directory, self.ycolumns, self.batch_size,
+        return CSVFileBatchGenerator(self.directory, self.ycolumns, self.xcolumns,
+                                     self.batch_size, self.handler,
                                      self.train_line_count, self.files, self.shuffle,
                                      start_loc=self.start_loc, end_loc=self.split_loc)
 
     def val_gen(self):
         if not self.has_val():
             return None
-        return CSVFileBatchGenerator(self.directory, self.ycolumns, self.batch_size,
+        return CSVFileBatchGenerator(self.directory, self.ycolumns, self.xcolumns,
+                                     self.batch_size, self.handler,
                                      self.val_line_count, self.files, self.shuffle,
                                      start_loc=self.split_loc, end_loc=self.end_loc)
 
 
 class CSVFileBatchGenerator(keras.utils.Sequence):
-    def __init__(self, directory, ycolumns, batch_size, line_count, files, shuffle,
-                 start_loc, end_loc):
+    def __init__(self, directory, ycolumns, xcolumns, handler, batch_size,
+                 line_count, files, shuffle, start_loc, end_loc):
         self.directory = directory
         self.ycolumns = ycolumns
         self.batch_size = batch_size
