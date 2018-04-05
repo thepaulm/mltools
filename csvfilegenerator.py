@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import subprocess
 import pandas as pd
+import numpy as np
 import keras
 import math
 
@@ -25,11 +26,39 @@ class FileLoc(object):
 
 
 class CSVFileGenerator(object):
-    def __init__(self, directory, ycolumns, batch_size=32, val_pct=None, shuffle=True):
+    def __init__(self, directory, ycolumns, xcolumns=None, batch_size=32,
+                 val_pct=None, shuffle=True, handler='pandas', skip_header=0):
+        '''Directory is where to look for the files.
+           ycolumns is the label columns.
+           xcolumns is the feature columns (default None for "all the non-labels").
+           batch_size is batch size per epoch.
+           val_pct is percentage (0-100) for validation data - can be 0.
+           shuffle default True for shuffle each batch.
+           handler="pandas" for pd dataframe handling. This is mostly useful for
+             variable data types and column names. This may also be "numpy" which
+             will use less memory (and is faster) but won't parse column headers.
+             In the case of handler="numpy", ycolumns and xcolumns must be index
+             ranges instead of label strings.
+        '''
+
         self.directory = directory
-        if isinstance(ycolumns, str):
-            ycolumns = [ycolumns]
+        if handler == "pandas":
+            if isinstance(ycolumns, str):
+                ycolumns = [ycolumns]
+            if isinstance(xcolumns, str):
+                xcolumns = [xcolumns]
+        elif handler == "numpy":
+            if isinstance(ycolumns, int):
+                ycolumns = slice(ycolumns, ycolumns+1)
+            if isinstance(xcolumns, int):
+                xcolumns = slice(xcolumns, xcolumns+1)
+        else:
+            raise Exception("no handler " + handler)
+
+        self.handler = handler
+        self.skip_header = skip_header
         self.ycolumns = ycolumns
+        self.xcolumns = xcolumns
         if val_pct == 0:
             val_pct = None
         self.val_pct = val_pct
@@ -76,8 +105,12 @@ class CSVFileGenerator(object):
         for i, f in enumerate(files):
             fullpath = self.directory + '/' + f
             lines = self.get_file_lines(fullpath)
-            if lines > 0:
-                lines -= 1  # Remove the header
+            if self.handler == "pandas":
+                if lines > 0:
+                    lines -= 1  # Remove the header
+            elif self.skip_header != 0:
+                if lines > self.skip_header:
+                    lines -= self.skip_header
             if lines > 0:
                 self.files.append(FileInfo(fullpath, i, 0, lines-1, self.total_lines))
                 self.total_lines += lines
@@ -86,23 +119,26 @@ class CSVFileGenerator(object):
         return self.val_pct is not None
 
     def train_gen(self):
-        return CSVFileBatchGenerator(self.directory, self.ycolumns, self.batch_size,
+        return CSVFileBatchGenerator(self.directory, self.ycolumns, self.xcolumns,
+                                     self.handler, self.skip_header, self.batch_size,
                                      self.train_line_count, self.files, self.shuffle,
                                      start_loc=self.start_loc, end_loc=self.split_loc)
 
     def val_gen(self):
         if not self.has_val():
             return None
-        return CSVFileBatchGenerator(self.directory, self.ycolumns, self.batch_size,
+        return CSVFileBatchGenerator(self.directory, self.ycolumns, self.xcolumns,
+                                     self.handler, self.skip_header, self.batch_size,
                                      self.val_line_count, self.files, self.shuffle,
                                      start_loc=self.split_loc, end_loc=self.end_loc)
 
 
 class CSVFileBatchGenerator(keras.utils.Sequence):
-    def __init__(self, directory, ycolumns, batch_size, line_count, files, shuffle,
-                 start_loc, end_loc):
+    def __init__(self, directory, ycolumns, xcolumns, handler, skip_header,
+                 batch_size, line_count, files, shuffle, start_loc, end_loc):
         self.directory = directory
         self.ycolumns = ycolumns
+        self.xcolumns = xcolumns
         self.batch_size = batch_size
         self.line_count = line_count
         self.files = files
@@ -112,18 +148,68 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
         self.current_file_index = self.start_loc.finfo.index
         self.total_offset_row = start_loc.finfo.total_start_row + start_loc.offset
 
-        self.read_curdf(self.start_loc.finfo)
+        if handler == "pandas":
+            self.read_cur = self.read_curdf
+            self.append_data = self.append_df
+            self.shuffler = self.shuffle_df
+            self.make_x = self.make_x_df
+            self.make_y = self.make_y_df
+            if skip_header != 0:
+                raise Exception("pandas doesn't skip header")
+        elif handler == "numpy":
+            self.read_cur = self.read_curnp
+            self.append_data = self.append_np
+            self.shuffler = self.shuffle_np
+            self.skip_header = skip_header
+            self.make_x = self.make_x_np
+            self.make_y = self.make_y_np
+        else:
+            raise Exception("Uknown handler " + handler)
+        self.handler = handler  # Nobody uses this, but this for debugging
 
+        self.read_cur(self.start_loc.finfo)
+
+    # Handler Specifics
     def read_curdf(self, finfo):
-        self.curdf = pd.read_csv(finfo.filename)
+        self.curdata = pd.read_csv(finfo.filename)
 
+    def read_curnp(self, finfo):
+        self.curdata = np.loadtxt(finfo.filename, delimiter=',', skiprows=self.skip_header)
+
+    def append_df(self, df1, df2):
+        return df1.append(df2)
+
+    def append_np(self, np1, np2):
+        return np.concatenate((np1, np2))
+
+    def shuffle_df(self, df):
+        return df.sample(frac=1).reset_index(drop=True)
+
+    def shuffle_np(self, np1):
+        return np.random.shuffle(np1)
+
+    def make_x_df(self, df):
+        if self.xcolumns is not None:
+            return df[self.xcolumns]
+        return df[[d for d in df.columns if d not in self.ycolumns]].as_matrix()
+
+    def make_y_df(self, df):
+        return df[self.ycolumns].as_matrix()
+
+    def make_x_np(self, np1):
+        return np1[:, self.xcolumns]
+
+    def make_y_np(self, np1):
+        return np1[:, self.ycolumns]
+
+    # Generic Methods
     def __len__(self):
         return math.ceil(self.line_count / self.batch_size)
 
     def _set_current_file(self, i):
             self.current_file_index = i
             current = self.files[self.current_file_index]
-            self.read_curdf(current)
+            self.read_cur(current)
             return current
 
     def __getitem__(self, idx):
@@ -141,13 +227,13 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
             while start > current.total_start_row + current.endrow:
                 self.current_file_index += 1
                 current = self.files[self.current_file_index]
-            self.read_curdf(current)
+            self.read_cur(current)
 
         start = start - current.total_start_row
         copied = 0
 
         def fix_end(count, copied, start):
-            end = len(self.curdf)
+            end = len(self.curdata)
             if self.end_loc.finfo.index == self.current_file_index:
                 end = self.end_loc.offset
             end = min(count - copied + start, end)
@@ -155,7 +241,7 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
 
         end = fix_end(count, copied, start)
 
-        df = self.curdf[start:end]
+        df = self.curdata[start:end]
         copied += end - start
 
         while copied < count:
@@ -165,15 +251,13 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
 
             end = fix_end(count, copied, 0)
 
-            df = df.append(self.curdf[0:end])
+            df = self.append_data(df, self.curdata[0:end])
             copied += end
 
         if self.shuffle:
-            df = df.sample(frac=1).reset_index(drop=True)
+            df = self.shuffler(df)
 
-        x = df[[d for d in df.columns if d not in self.ycolumns]]
-        y = df[self.ycolumns]
-        return x, y
+        return self.make_x(df), self.make_y(df)
 
 
 #
@@ -208,10 +292,7 @@ def clean_test_files(td):
     shutil.rmtree(td)
 
 
-def test_gen(files, lines, batch_size, val_pct, td):
-
-    csvgen = CSVFileGenerator(directory=td, ycolumns='y', batch_size=batch_size, val_pct=val_pct,
-                              shuffle=False)
+def test_gen(files, lines, batch_size, val_pct, csvgen):
 
     tg = csvgen.train_gen()
     vg = csvgen.val_gen()
@@ -229,8 +310,8 @@ def test_gen(files, lines, batch_size, val_pct, td):
             assert(len(y) == batch_size)
         assert(len(x) == len(y))
         for j in range(len(x)):
-            assert(x.iloc[j].x == checked % lines)
-            assert(y.iloc[j].y == checked)
+            assert(x[j] == checked % lines)
+            assert(y[j] == checked)
             checked += 1
 
     assert(checked == split)
@@ -244,14 +325,35 @@ def test_gen(files, lines, batch_size, val_pct, td):
                 assert(len(y) == batch_size)
             assert(len(x) == len(y))
             for j in range(len(x)):
-                assert(x.iloc[j].x == checked % lines)
-                assert(y.iloc[j].y == checked)
+                assert(x[j] == checked % lines)
+                assert(y[j] == checked)
                 checked += 1
         val_count = checked - train_count
         assert(val_count + train_count == files * lines)
 
 
+def test_gens(files, lines, batch_size, val_pct, td):
+
+    csvgen = CSVFileGenerator(directory=td, ycolumns='y', batch_size=batch_size,
+                              val_pct=val_pct, shuffle=False)
+    test_gen(files, lines, batch_size, val_pct, csvgen)
+
+    csvgen = CSVFileGenerator(directory=td, ycolumns=1, xcolumns=0, batch_size=batch_size,
+                              val_pct=val_pct, shuffle=False, handler='numpy', skip_header=1)
+    test_gen(files, lines, batch_size, val_pct, csvgen)
+
+
 def test():
+    def breaker(type, value, tb):
+        import traceback
+        import ipdb
+        traceback.print_exception(type, value, tb)
+        print()
+        ipdb.pm()
+
+    import sys
+    sys.excepthook = breaker
+
     files = 20
     lines = 100
     batch_size = 32
@@ -259,7 +361,7 @@ def test():
     td = make_test_files(files, lines)
 
     for val_pct in val_pcts:
-        test_gen(files, lines, batch_size, val_pct, td)
+        test_gens(files, lines, batch_size, val_pct, td)
 
     clean_test_files(td)
 
