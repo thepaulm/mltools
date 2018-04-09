@@ -177,7 +177,8 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
         self.curdata = pd.read_csv(finfo.filename)
 
     def read_curnp(self, finfo):
-        self.curdata = np.loadtxt(finfo.filename, delimiter=',', skiprows=self.skip_header)
+        # self.curdata = np.loadtxt(finfo.filename, delimiter=',', skiprows=self.skip_header)
+        self.curdata = np.genfromtxt(finfo.filename, delimiter=',', skip_header=self.skip_header)
 
     def append_df(self, df1, df2):
         return df1.append(df2)
