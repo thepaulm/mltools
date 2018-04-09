@@ -26,9 +26,10 @@ class FileLoc(object):
 
 
 class CSVFileGenerator(object):
-    def __init__(self, directory, ycolumns, xcolumns=None, batch_size=32,
+    def __init__(self, directory_or_fileiter, ycolumns, xcolumns=None, batch_size=32,
                  val_pct=None, shuffle=True, handler='pandas', skip_header=0):
-        '''Directory is where to look for the files.
+        '''directory_of_fileiter is where to look for the files. You can pass a
+             directory name, or some iterable of files.
            ycolumns is the label columns.
            xcolumns is the feature columns (default None for "all the non-labels").
            batch_size is batch size per epoch.
@@ -41,7 +42,6 @@ class CSVFileGenerator(object):
              ranges instead of label strings.
         '''
 
-        self.directory = directory
         if handler == "pandas":
             if isinstance(ycolumns, str):
                 ycolumns = [ycolumns]
@@ -55,6 +55,11 @@ class CSVFileGenerator(object):
         else:
             raise Exception("no handler " + handler)
 
+        dofi = directory_or_fileiter
+        if isinstance(dofi, str):
+            self.fileiter = [f for f in self._sorted_listdir(dofi) if f.endswith('.csv')]
+        else:
+            self.fileiter = dofi
         self.handler = handler
         self.skip_header = skip_header
         self.ycolumns = ycolumns
@@ -98,13 +103,12 @@ class CSVFileGenerator(object):
     def _sorted_listdir(self, directory):
         def pmtime(f):
             return os.path.getmtime(directory + '/' + f)
-        return sorted(os.listdir(directory), key=pmtime, reverse=False)
+        fl = sorted(os.listdir(directory), key=pmtime, reverse=False)
+        return [directory + '/' + f for f in fl]
 
     def build_file_map(self):
-        files = [f for f in self._sorted_listdir(self.directory) if f.endswith('.csv')]
-        for i, f in enumerate(files):
-            fullpath = self.directory + '/' + f
-            lines = self.get_file_lines(fullpath)
+        for i, f in enumerate(self.fileiter):
+            lines = self.get_file_lines(f)
             if self.handler == "pandas":
                 if lines > 0:
                     lines -= 1  # Remove the header
@@ -112,14 +116,14 @@ class CSVFileGenerator(object):
                 if lines > self.skip_header:
                     lines -= self.skip_header
             if lines > 0:
-                self.files.append(FileInfo(fullpath, i, 0, lines-1, self.total_lines))
+                self.files.append(FileInfo(f, i, 0, lines-1, self.total_lines))
                 self.total_lines += lines
 
     def has_val(self):
         return self.val_pct is not None
 
     def train_gen(self):
-        return CSVFileBatchGenerator(self.directory, self.ycolumns, self.xcolumns,
+        return CSVFileBatchGenerator(self.ycolumns, self.xcolumns,
                                      self.handler, self.skip_header, self.batch_size,
                                      self.train_line_count, self.files, self.shuffle,
                                      start_loc=self.start_loc, end_loc=self.split_loc)
@@ -127,16 +131,15 @@ class CSVFileGenerator(object):
     def val_gen(self):
         if not self.has_val():
             return None
-        return CSVFileBatchGenerator(self.directory, self.ycolumns, self.xcolumns,
+        return CSVFileBatchGenerator(self.ycolumns, self.xcolumns,
                                      self.handler, self.skip_header, self.batch_size,
                                      self.val_line_count, self.files, self.shuffle,
                                      start_loc=self.split_loc, end_loc=self.end_loc)
 
 
 class CSVFileBatchGenerator(keras.utils.Sequence):
-    def __init__(self, directory, ycolumns, xcolumns, handler, skip_header,
+    def __init__(self, ycolumns, xcolumns, handler, skip_header,
                  batch_size, line_count, files, shuffle, start_loc, end_loc):
-        self.directory = directory
         self.ycolumns = ycolumns
         self.xcolumns = xcolumns
         self.batch_size = batch_size
@@ -334,11 +337,11 @@ def test_gen(files, lines, batch_size, val_pct, csvgen):
 
 def test_gens(files, lines, batch_size, val_pct, td):
 
-    csvgen = CSVFileGenerator(directory=td, ycolumns='y', batch_size=batch_size,
+    csvgen = CSVFileGenerator(td, ycolumns='y', batch_size=batch_size,
                               val_pct=val_pct, shuffle=False)
     test_gen(files, lines, batch_size, val_pct, csvgen)
 
-    csvgen = CSVFileGenerator(directory=td, ycolumns=1, xcolumns=0, batch_size=batch_size,
+    csvgen = CSVFileGenerator(td, ycolumns=1, xcolumns=0, batch_size=batch_size,
                               val_pct=val_pct, shuffle=False, handler='numpy', skip_header=1)
     test_gen(files, lines, batch_size, val_pct, csvgen)
 
