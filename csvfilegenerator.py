@@ -94,6 +94,9 @@ class CSVFileGenerator(object):
                     break
                 lines += f.endrow + 1
 
+        # if you want to just have a gen, it's the same as train_gen
+        self.gen = self.train_gen
+
     def get_file_lines(self, fullpath):
         p = subprocess.Popen('wc -l ' + fullpath, shell=True,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
