@@ -193,7 +193,8 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
         return df.sample(frac=1).reset_index(drop=True)
 
     def shuffle_np(self, np1):
-        return np.random.shuffle(np1)
+        np.random.shuffle(np1)
+        return np1
 
     def make_x_df(self, df):
         if self.xcolumns is not None:
