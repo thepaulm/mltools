@@ -27,7 +27,8 @@ class FileLoc(object):
 
 class CSVFileGenerator(object):
     def __init__(self, directory_or_fileiter, ycolumns, xcolumns=None, batch_size=32,
-                 val_pct=None, shuffle=True, handler='pandas', skip_header=0):
+                 val_pct=None, shuffle=True, handler='pandas', skip_header=0,
+                 xtx=None, ytx=None):
         '''directory_of_fileiter is where to look for the files. You can pass a
              directory name, or some iterable of files.
            ycolumns is the label columns.
@@ -54,6 +55,8 @@ class CSVFileGenerator(object):
                 xcolumns = slice(xcolumns, xcolumns+1)
         else:
             raise Exception("no handler " + handler)
+        self.xtx = xtx
+        self.ytx = ytx
 
         dofi = directory_or_fileiter
         if isinstance(dofi, str):
@@ -129,7 +132,8 @@ class CSVFileGenerator(object):
         return CSVFileBatchGenerator(self.ycolumns, self.xcolumns,
                                      self.handler, self.skip_header, self.batch_size,
                                      self.train_line_count, self.files, self.shuffle,
-                                     start_loc=self.start_loc, end_loc=self.split_loc)
+                                     start_loc=self.start_loc, end_loc=self.split_loc,
+                                     xtx=self.xtx, ytx=self.ytx)
 
     def val_gen(self):
         if not self.has_val():
@@ -137,12 +141,13 @@ class CSVFileGenerator(object):
         return CSVFileBatchGenerator(self.ycolumns, self.xcolumns,
                                      self.handler, self.skip_header, self.batch_size,
                                      self.val_line_count, self.files, self.shuffle,
-                                     start_loc=self.split_loc, end_loc=self.end_loc)
+                                     start_loc=self.split_loc, end_loc=self.end_loc,
+                                     xtx=self.xtx, ytx=self.ytx)
 
 
 class CSVFileBatchGenerator(keras.utils.Sequence):
     def __init__(self, ycolumns, xcolumns, handler, skip_header,
-                 batch_size, line_count, files, shuffle, start_loc, end_loc):
+                 batch_size, line_count, files, shuffle, start_loc, end_loc, xtx, ytx):
         self.ycolumns = ycolumns
         self.xcolumns = xcolumns
         self.batch_size = batch_size
@@ -153,6 +158,8 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
         self.end_loc = end_loc
         self.current_file_index = self.start_loc.finfo.index
         self.total_offset_row = start_loc.finfo.total_start_row + start_loc.offset
+        self.xtx = xtx
+        self.ytx = ytx
 
         if handler == "pandas":
             self.read_cur = self.read_curdf
@@ -265,7 +272,13 @@ class CSVFileBatchGenerator(keras.utils.Sequence):
         if self.shuffle:
             df = self.shuffler(df)
 
-        return self.make_x(df), self.make_y(df)
+        x = self.make_x(df)
+        y = self.make_y(df)
+        if self.xtx:
+            x = self.xtx(x)
+        if self.ytx:
+            y = self.ytx(y)
+        return x, y
 
 
 #
